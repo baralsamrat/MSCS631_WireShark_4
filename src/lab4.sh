@@ -1,9 +1,7 @@
 #!/bin/bash
-# lab4.sh - Creates a virtual environment, installs required packages, runs lab4.py, and deactivates the environment.
-
 if [ ! -d "venv" ]; then
     echo "Creating virtual environment..."
-    python3 -m venv venv
+    python -m venv venv
 fi
 
 echo "Activating virtual environment..."
@@ -18,7 +16,7 @@ pip install --upgrade pip
 pip install pyshark requests
 
 echo "Running lab4.py..."
-python3 lab4.py
+python lab4.py
 
 echo "Deactivating virtual environment..."
 deactivate

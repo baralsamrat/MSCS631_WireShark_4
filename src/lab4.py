@@ -4,7 +4,8 @@ import pyshark
 import requests, zipfile, io
 
 # --- Configuration ---
-CAPTURE_FILE = "Wireshark_801_11.pcapng"
+LIVE_FILE = "live_capture.pcapng"
+DOWNLOAD_FILE = "Wireshark_801_11.pcapng"
 ZIP_URL = "http://gaia.cs.umass.edu/wireshark-labs/wireshark-traces-8.1.zip"
 
 # --- Capture / Download Functions ---
@@ -15,7 +16,7 @@ def capture_traffic(interface, duration, output_file):
         print(f"📡 Starting live capture on interface '{interface}' for {duration} seconds...")
         capture = pyshark.LiveCapture(interface=interface, output_file=output_file)
         capture.sniff(timeout=duration)
-        print(f"📡 Capture complete. File saved as '{output_file}'.")
+        print(f"📡 Live capture complete. File saved as '{output_file}'.")
         return True
     except Exception as e:
         print("Live capture failed:", e)
@@ -30,7 +31,7 @@ def download_trace(url, target_file):
             with zipfile.ZipFile(io.BytesIO(response.content)) as z:
                 if target_file in z.namelist():
                     z.extract(target_file)
-                    print("Download and extraction complete.")
+                    print("Download and extraction complete. Saved as:", target_file)
                     return True
                 else:
                     print("Target file not found in the ZIP archive.")
@@ -236,7 +237,7 @@ def answer_q15(cap):
     return None
 
 def answer_q16(cap):
-    # FIXED: Iterate over layers in the Association Request frame to get Supported Rates.
+    # Iterate over layers in an Association Request frame (type 0, subtype 0) to get Supported Rates.
     assoc_req = None
     for pkt in cap:
         if hasattr(pkt, 'wlan'):
@@ -244,10 +245,10 @@ def answer_q16(cap):
                 assoc_req = pkt
                 break
     if assoc_req:
+        # Iterate over layers to find the wlan_mgt layer with tag "1"
         for layer in assoc_req:
             if layer.layer_name == "wlan_mgt" and hasattr(layer, 'tag_number'):
-                tag = layer.get_field('tag_number')
-                if tag == "1":  # Supported Rates
+                if layer.get_field('tag_number') == "1":
                     rates = layer.get_field('tagged_parameter')
                     return rates
         return None
@@ -264,22 +265,12 @@ def answer_q17(cap):
 def answer_q18(cap):
     return "Yes, the fastest Extended Supported Rate (54 Mbps) matches for both the host and the AP."
 
-def main():
-    # If the capture file doesn't exist, try live capture; if that fails, download from the website.
-    if not os.path.exists(CAPTURE_FILE):
-        interface = input("Enter network interface for live capture (e.g., 'Wi-Fi'): ").strip()
-        duration = int(input("Enter capture duration in seconds: "))
-        if not capture_traffic(interface, duration, CAPTURE_FILE):
-            print("Live capture failed. Attempting to download trace from website...")
-            if not download_trace(ZIP_URL, CAPTURE_FILE):
-                print("Failed to obtain trace file. Exiting.")
-                return
-
-    print("📡 Starting analysis of capture file:", CAPTURE_FILE)
+def analyze_file(capture_file, label):
+    print(f"\n📡 Starting analysis on {label} file: {capture_file}")
     try:
-        cap = pyshark.FileCapture(CAPTURE_FILE, keep_packets=False)
+        cap = pyshark.FileCapture(capture_file, keep_packets=False)
     except FileNotFoundError:
-        print(f"Error: Capture file '{CAPTURE_FILE}' not found.")
+        print(f"Error: File '{capture_file}' not found.")
         return
 
     # Q1
@@ -414,7 +405,168 @@ def main():
     print(f"  a) {q18}")
     
     cap.close()
-    print("\n📡 Analysis complete.")
+    print(f"\n📡 Analysis on {label} file complete.\n")
+
+def analyze_file(capture_file, label):
+    print(f"\n📡 Starting analysis on {label} file: {capture_file}")
+    try:
+        cap = pyshark.FileCapture(capture_file, keep_packets=False)
+    except FileNotFoundError:
+        print(f"Error: File '{capture_file}' not found.")
+        return
+
+    # (Reuse the same Q1-Q18 analysis as above)
+    # For brevity, we call the functions and print results here:
+    q1a, q1b = answer_q1(cap)
+    print("\nQuestion 1: SSIDs issuing most beacon frames")
+    if q1a:
+        print(f"  a) Most frequent SSID: {q1a[0]} with {q1a[1]} beacon frames")
+    else:
+        print("  a) No beacon frames found.")
+    if q1b:
+        print(f"  b) Second most frequent SSID: {q1b[0]} with {q1b[1]} beacon frames")
+    
+    q2 = answer_q2(cap)
+    print("\nQuestion 2: 802.11 channel")
+    if q2:
+        print(f"  a) Both APs are operating on channel: {q2}")
+    else:
+        print("  a) Channel information not available.")
+    
+    q3 = answer_q3(cap)
+    print("\nQuestion 3: Beacon interval")
+    if q3:
+        print(f"  a) Beacon interval is: {q3} TUs")
+    else:
+        print("  a) Beacon interval information not found.")
+    
+    q4 = answer_q4(cap)
+    print("\nQuestion 4: Source MAC address on beacon frame")
+    if q4:
+        print(f"  a) Source MAC address: {q4}")
+    else:
+        print("  a) Source MAC address not found.")
+    
+    q5, q6 = answer_q5_q6(cap)
+    print("\nQuestion 5 & 6: '30 Munroe St' beacon - Destination MAC and MAC BSS ID")
+    if q5 and q6:
+        print(f"  a) Destination MAC address: {q5}")
+        print(f"  b) MAC BSS ID: {q6}")
+    else:
+        print("  a) '30 Munroe St' beacon frame not found.")
+    
+    supp_rates, ext_rates = answer_q7(cap)
+    print("\nQuestion 7: Supported and Extended Supported Rates for '30 Munroe St'")
+    if supp_rates is not None and ext_rates is not None:
+        print(f"  a) Supported Rates: {supp_rates}")
+        print(f"  b) Extended Supported Rates: {ext_rates}")
+    else:
+        print("  a) '30 Munroe St' beacon frame not available for rate extraction.")
+    
+    q8 = answer_q8(cap)
+    print("\nQuestion 8: TCP SYN frame analysis for alice.txt download")
+    if q8[0]:
+        print("  a) MAC Addresses in TCP SYN frame:")
+        print(f"     - Receiver (Address 1): {q8[0]}")
+        print(f"     - Transmitter (Address 2): {q8[1]}")
+        print(f"     - First-hop Router (Address 3): {q8[2]}")
+        print(f"  b) Wireless Host IP (source): {q8[3]}")
+        print(f"  c) Destination IP: {q8[4]}")
+    else:
+        print("  a) TCP SYN frame not found.")
+    
+    dest = answer_q9(q8[4])
+    print("\nQuestion 9: Destination IP interpretation for TCP SYN")
+    print(f"  a) The destination IP corresponds to: {dest}")
+    
+    q10 = answer_q10(cap)
+    print("\nQuestion 10: TCP SYNACK frame analysis")
+    if q10[0]:
+        print("  a) MAC Addresses in TCP SYNACK frame:")
+        print(f"     - Host: {q10[0]}")
+        print(f"     - AP: {q10[1]}")
+        print(f"     - First-hop Router: {q10[2]}")
+        print("  b) Sender MAC corresponds to the device that sent the TCP segment.")
+    else:
+        print("  a) TCP SYNACK frame not found.")
+    
+    q11 = answer_q11(cap)
+    print("\nQuestion 11: Actions to end association after t=49")
+    print(f"  a) {q11}")
+    
+    q12 = answer_q12(cap)
+    print("\nQuestion 12: Authentication method requested by the host")
+    print(f"  a) Authentication method: {q12}")
+    
+    q13 = answer_q13(cap)
+    print("\nQuestion 13: Authentication SEQ value (host to AP)")
+    if q13:
+        print(f"  a) Authentication SEQ value: {q13}")
+    else:
+        print("  a) Authentication SEQ value not found.")
+    
+    q14 = answer_q14(cap)
+    print("\nQuestion 14: AP's response to the authentication request")
+    print(f"  a) AP response: {q14}")
+    
+    q15 = answer_q15(cap)
+    print("\nQuestion 15: Authentication SEQ value (AP to host)")
+    if q15:
+        print(f"  a) Authentication SEQ value: {q15}")
+    else:
+        print("  a) Authentication SEQ value not found.")
+    
+    q16 = answer_q16(cap)
+    print("\nQuestion 16: Supported Rates in Association Request (excluding extended rates)")
+    if q16:
+        print(f"  a) Supported Rates: {q16}")
+    else:
+        print("  a) Association Request Supported Rates not found.")
+    
+    q17 = answer_q17(cap)
+    print("\nQuestion 17: Association Response status")
+    print(f"  a) ASSOCIATION RESPONSE indicates: {q17}")
+    
+    q18 = answer_q18(cap)
+    print("\nQuestion 18: Comparison of fastest Extended Supported Rate")
+    print(f"  a) {q18}")
+    
+    cap.close()
+    print(f"\n📡 Analysis on {label} file complete.\n")
+
+def main():
+    print("Select capture method:")
+    print("1 - Live capture only")
+    print("2 - Download capture file only")
+    print("3 - Both live capture and download")
+    choice = input("Enter option (1, 2, or 3): ").strip()
+
+    if choice == "1":
+        if not os.path.exists(LIVE_FILE):
+            interface = input("Enter network interface for live capture (e.g., 'Wi-Fi'): ").strip()
+            duration = int(input("Enter capture duration in seconds: "))
+            if not capture_traffic(interface, duration, LIVE_FILE):
+                print("Live capture failed. Exiting.")
+                return
+        analyze_file(LIVE_FILE, "Live Capture")
+    elif choice == "2":
+        if not os.path.exists(DOWNLOAD_FILE):
+            if not download_trace(ZIP_URL, DOWNLOAD_FILE):
+                print("Download failed. Exiting.")
+                return
+        analyze_file(DOWNLOAD_FILE, "Downloaded Capture")
+    elif choice == "3":
+        if not os.path.exists(LIVE_FILE):
+            interface = input("Enter network interface for live capture (e.g., 'Wi-Fi'): ").strip()
+            duration = int(input("Enter capture duration in seconds: "))
+            capture_traffic(interface, duration, LIVE_FILE)
+        if not os.path.exists(DOWNLOAD_FILE):
+            download_trace(ZIP_URL, DOWNLOAD_FILE)
+        analyze_file(LIVE_FILE, "Live Capture")
+        analyze_file(DOWNLOAD_FILE, "Downloaded Capture")
+    else:
+        print("Invalid option. Exiting.")
+        return
 
 if __name__ == '__main__':
     main()

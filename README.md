@@ -164,7 +164,7 @@ Question 13: Authentication SEQ value (host to AP)
   a) Authentication SEQ value not found.
 
 Question 14: AP's response to the authentication request
-  a) AP response: Unknown
+ a) AP response: Unknown
 
 Question 15: Authentication SEQ value (AP to host)
   a) Authentication SEQ value not found.
